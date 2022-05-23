@@ -54,8 +54,6 @@ class CNN(torch.nn.Module):
 model = CNN()
 optimizer = torch.optim.SDG(model.parameters(), lr=0.001)
 
-
-
 # %%
 for batch_idx, batch in enumerate(train_loader):
     # print(batch)
