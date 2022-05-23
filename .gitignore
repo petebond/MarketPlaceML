@@ -1,0 +1,8 @@
+.env
+images LRG/
+resized/
+resized64/
+images/
+*.jpg
+models/
+models BAK/

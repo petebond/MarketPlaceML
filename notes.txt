@@ -1,0 +1,6 @@
+You have to fit the model with the same format of your images
+you can use batches:
+    Stocastic batches are 1 by 1
+    SKLearn is going to accept the same format for all of your images
+    PyTorch - the input can be dynamic. Don't all need to be the same size
+    Except all images in the batch need to be the same
