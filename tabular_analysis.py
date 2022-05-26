@@ -170,9 +170,9 @@ class ML():
     def prepare_image_category_datapoint(self, index: int, images_category_df) -> None:
         image = images_category_df['image_path'][index]
         image = Image.open('resized64/' + image + '.jpg')
-        image = np.array(image)
-        image = torch.from_numpy(image)
-        image = torch.flatten(image)
+        image = np.array(image).flatten()
+        # image = torch.from_numpy(image)
+        # image = torch.flatten(image)
         category = images_category_df['category'][index]
         return (image, category)
 
@@ -250,13 +250,15 @@ if __name__ == "__main__":
     img_paths = fb.create_df_of_image_paths()
     img_cats_df = fb.numberise_categories(df, 'category', cat_dict, img_paths)
 
+
+# %%
     # Shuffle the data
     print("Shuffling the data...")
     complete_dataset = []
-    array_size = 12288
+    #array_size = 64 * 64 * 3
     n = len(img_cats_df)
-    X = np.zeros((n, array_size))
-    y = np.zeros(n)
+    #X = np.zeros((n, array_size))
+    #y = np.zeros(n)
 
     # create list of indexes to randomise
     indexes = list(range(n))
@@ -264,28 +266,40 @@ if __name__ == "__main__":
 
     for idx in indexes:
         complete_dataset.append(fb.prepare_image_category_datapoint(idx, img_cats_df))
-        
+    X = []
+    y = []    
+
     for idx in range(n):    
         features, label = complete_dataset[idx]  
-        X[idx, :] = features
-        y[idx] = label
+        X.append(features)
+        y.append(label)
+
+    # convert lists to numPy arrays
+    X = np.array(X)
+    y = np.array(y)
     
     # test train split
     print("Splitting test and train...")
     X_train, X_test, y_train, y_test = fb.test_split(X, y, 5)
     
 # %%
-    
+    # view an image sample
+    image = X[1015]
+    print(image[0:64])
+    print(image.shape)
+    image = image.reshape(64, 64, 3)
+    plt.imshow(np.transpose(image, (1, 0, 2)))
+    plt.show()
+    print("Viewing an image sample...")
+    print(X[0])
+
+# %%
     dump_X = pd.DataFrame(X)
     dump_y = pd.DataFrame(y)
     print("Exporting X and y to pickle files...")
-    file_object = open("models/image_model_y.pkl", "wb")
-    pkl.dump(dump_y, file_object)
-    file_object.close()
-    print("export of y complete - attempting x")
-    file_object = open("models/image_model_X.pkl", "wb")
-    pkl.dump(dump_X, file_object)
-    file_object.close()
+    pd.to_pickle(dump_X, 'models/image_model_X.pkl')
+    pd.to_pickle(dump_y, 'models/image_model_y.pkl')
+
 
 # %%
     print("Training the model...")
