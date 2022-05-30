@@ -9,14 +9,15 @@ Creating a Facebook style marketplace data pipeline. By the end of the project, 
 • Monitored and retrain the model using Kubeflow deployed on EKS 
 
 ## Milestone 1
+Given an S3 bucket of images and a flat-file data base - I have information such as price, location and description. Most of the data is text, but as text is generally poor for ML use, it was needed to be converted into numerical data.
+
+Main tasks:
+• Split the "category" data into its Main, sub-, and bottom category.
+• Discard poorly formed data
+• Discard rows with NaNs present across the board
+• Clean the price information into float, disregarding currency decoration.
 
 
-  
-```python
-"""Insert your code here"""
-```
-
-> Insert an image/screenshot of what you have built so far here.
 
 ## Milestone 2
 
