@@ -14,7 +14,7 @@ class CleanImages:
         self.images = glob.glob(self.path + '/*.jpg')
         self.resized = glob.glob(self.output_path + '/*.jpg')
 
-    def clean(self, size: int=64) -> None:
+    def clean(self, size: int=224) -> None:
         """Resizes the images to the given size.
         Adds black borders to maintain aspect ratio.
 
@@ -51,5 +51,6 @@ class CleanImages:
                 print(f'Image already resized: {image}')
 
 if __name__ == "__main__":
-    clean_images = CleanImages('../images', '../resized64')
-    clean_images.clean()
+    size = 224
+    clean_images = CleanImages('../images', '../resized'+str(size))
+    clean_images.clean(size)
