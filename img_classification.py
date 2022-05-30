@@ -144,11 +144,11 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=25):
     time_elapsed = time.time() - since
     print(f'Training complete in {time_elapsed // 60:.0f}m {time_elapsed % 60:.0f}s')
     print(f'Best val Acc: {(best_acc * 100):.1f}%')
-    print("Saving model...")
-    torch.save(model.state_dict(), 'models/model_state_dict.pt')
-
+    
     # load best model weights
+    print("Saving model...")
     model.load_state_dict(best_model_wts)
+    torch.save(model.state_dict(), 'models/model_state_dict.pt')
     return model
 
 def visualize_model(model, num_images=6):
