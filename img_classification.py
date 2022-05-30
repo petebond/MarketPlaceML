@@ -1,3 +1,4 @@
+# %%
 from __future__ import print_function, division
 
 import torch
@@ -16,6 +17,8 @@ from torch.utils.tensorboard import SummaryWriter
 
 cudnn.benchmark = True
 plt.ion()   # interactive mode
+writer = SummaryWriter()
+
 
 # Data augmentation and normalization for training
 # Just normalization for validation
@@ -27,8 +30,7 @@ data_transforms = {
         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     ]),
     'val': transforms.Compose([
-        transforms.Resize(256),
-        transforms.CenterCrop(224),
+        transforms.Resize(224),
         transforms.ToTensor(),
         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     ]),
@@ -39,7 +41,7 @@ image_datasets = {x: datasets.ImageFolder(os.path.join(data_dir, x),
                                           data_transforms[x])
                   for x in ['train', 'val']}
 dataloaders = {x: torch.utils.data.DataLoader(image_datasets[x], batch_size=4,
-                                             shuffle=True, num_workers=0)
+                                             shuffle=True, num_workers=4)
               for x in ['train', 'val']}
 dataset_sizes = {x: len(image_datasets[x]) for x in ['train', 'val']}
 class_names = image_datasets['train'].classes
@@ -89,7 +91,7 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=25):
 
             running_loss = 0.0
             running_corrects = 0
-
+            counter = 0
             # Iterate over data.
             for inputs, labels in dataloaders[phase]:
                 inputs = inputs.to(device)
@@ -100,10 +102,15 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=25):
 
                 # forward
                 # track history if only in train
+                
                 with torch.set_grad_enabled(phase == 'train'):
+                    counter += 1
                     outputs = model(inputs)
                     _, preds = torch.max(outputs, 1)
                     loss = criterion(outputs, labels)
+                    print(f'{phase} Rnd {epoch} of {num_epochs} loss: {loss.item():.4f} Running corrects: {running_corrects} Batch No: {counter}')
+                    # TRAINING LOSS STAT UNCOMMENT BELOW
+                    writer.add_scalar('Training Loss', loss, counter)
 
                     # backward + optimize only if in training phase
                     if phase == 'train':
@@ -113,25 +120,32 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=25):
                 # statistics
                 running_loss += loss.item() * inputs.size(0)
                 running_corrects += torch.sum(preds == labels.data)
+                
             if phase == 'train':
                 scheduler.step()
 
             epoch_loss = running_loss / dataset_sizes[phase]
-            epoch_acc = running_corrects.double() / dataset_sizes[phase]
-            writer.add_scalar('Epoch Loss', epoch_loss, epoch)
+            epoch_acc = running_corrects / (counter * 4)
+            # EPOCH LOSS STAT UNCOMMENT BELOW
+            # writer.add_scalar('Epoch Loss', epoch_loss, epoch)
 
-            print(f'{phase} Loss: {epoch_loss:.4f} Acc: {epoch_acc:.4f}')
+            print(f'{phase} Loss: {epoch_loss:.4f} Acc: {(epoch_acc * 100):.1f}%')
+            # input("EPOCH COMPLETE: Press Enter to continue...")
 
             # deep copy the model
             if phase == 'val' and epoch_acc > best_acc:
                 best_acc = epoch_acc
                 best_model_wts = copy.deepcopy(model.state_dict())
+                # save the model to file
+                
 
         print()
 
     time_elapsed = time.time() - since
     print(f'Training complete in {time_elapsed // 60:.0f}m {time_elapsed % 60:.0f}s')
-    print(f'Best val Acc: {best_acc:4f}')
+    print(f'Best val Acc: {(best_acc * 100):.1f}%')
+    print("Saving model...")
+    torch.save(model.state_dict(), 'models/model_state_dict.pt')
 
     # load best model weights
     model.load_state_dict(best_model_wts)
@@ -163,28 +177,60 @@ def visualize_model(model, num_images=6):
                     return
         model.train(mode=was_training)
 
-input("Entering training loop - Press Enter to continue...")
+#input("Entering training loop - Press Enter to continue...")
 
-writer = SummaryWriter()
-model_ft = models.resnet50(pretrained=True)
-num_ftrs = model_ft.fc.in_features
-# Here the size of each output sample is set to 2.
-# Alternatively, it can be generalized to nn.Linear(num_ftrs, len(class_names)).
-model_ft.fc = nn.Linear(num_ftrs, len(class_names))
+choice = input("Train the pre-trained model or Fixed feature extractor? (t/f): ")
+if choice == 't':
 
-model_ft = model_ft.to(device)
+# %%
+# finetuning the convnet
+    model_ft = models.resnet50(pretrained=True)
+    num_ftrs = model_ft.fc.in_features
+    # Here the size of each output sample is set to 2.
+    # Alternatively, it can be generalized to nn.Linear(num_ftrs, len(class_names)).
+    model_ft.fc = nn.Linear(num_ftrs, len(class_names))
 
-criterion = nn.CrossEntropyLoss()
+    model_ft = model_ft.to(device)
 
-# Observe that all parameters are being optimized
-optimizer_ft = optim.SGD(model_ft.parameters(), lr=0.001, momentum=0.9)
+    criterion = nn.CrossEntropyLoss()
 
-# Decay LR by a factor of 0.1 every 7 epochs
-exp_lr_scheduler = lr_scheduler.StepLR(optimizer_ft, step_size=7, gamma=0.1)
+    # Observe that all parameters are being optimized
+    optimizer_ft = optim.SGD(model_ft.parameters(), lr=0.001, momentum=0.9)
 
-model_ft = train_model(model_ft, criterion, optimizer_ft, exp_lr_scheduler,
-                       num_epochs=25)
+    # Decay LR by a factor of 0.1 every 7 epochs
+    exp_lr_scheduler = lr_scheduler.StepLR(optimizer_ft, step_size=7, gamma=0.1)
 
-visualize_model(model_ft)
-plt.ioff()
-plt.show()
+    model_ft = train_model(model_ft, criterion, optimizer_ft, exp_lr_scheduler,
+                        num_epochs=25)
+
+    visualize_model(model_ft)
+    plt.ioff()
+    plt.show()
+
+
+# %%
+# convnet as fixed feature extractor
+elif choice == 'f':
+    model_conv = torchvision.models.resnet50(pretrained=True)
+    for param in model_conv.parameters():
+        param.requires_grad = False
+
+    num_ftrs = model_conv.fc.in_features
+    model_conv.fc = nn.Linear(num_ftrs, len(class_names))
+
+    model_conv = model_conv.to(device)
+
+    criterion = nn.CrossEntropyLoss()
+
+    optimizer_conv = optim.SGD(model_conv.fc.parameters(), lr=0.001, momentum=0.9)
+
+    exp_lr_scheduler = lr_scheduler.StepLR(optimizer_conv, step_size=7, gamma=0.1)
+
+    model_conv = train_model(model_conv, criterion, optimizer_conv, exp_lr_scheduler,
+                        num_epochs=25)
+
+    visualize_model(model_conv)
+    plt.ioff()
+    plt.show()
+
+# %%
