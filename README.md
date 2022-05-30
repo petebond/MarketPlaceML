@@ -17,7 +17,7 @@ Main tasks:
 • Discard rows with NaNs present across the board
 • Clean the price information into float, disregarding currency decoration.
 
-
+![Table cleaning code example](resources/M1.png)
 
 ## Milestone 2
 
