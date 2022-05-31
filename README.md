@@ -19,29 +19,26 @@ Main tasks:
 
 ![Table cleaning code example](resources/M1.png)
 
+Next, I created a simple image cleaning class, which takes in images of various dimensions, channels, filetypes etc, and exports them to a consistent target size and channels.
+
+In my script the default image size is 224 x 224. Black bars are automatically added to the sides, or above and below, for images that are long or wide.
+
+![Image cleaning code example](resources/M1b.png)
+
+
 ## Milestone 2
 
-- Does what you have built in this milestone connect to the previous one? If so explain how. What technologies are used? Why have you used them? Have you run any commands in the terminal? If so insert them using backticks (To get syntax highlighting for code snippets add the language after the first backticks).
+Creating simple regression models.
+This was never going to work in this situation, as there isn't a linear relationship between the category of a product and its price, but the exercise was useful inasmuch as it introduced me to the idea of using linear regression to predict outcomes.
 
-- Example below:
+![Simple regression model](resources/M2.png)
 
-```bash
-/bin/kafka-topics.sh --list --zookeeper 127.0.0.1:2181
-```
+Creating a simple classification model.
+The previously cleaned images are then flattened into numpy arrays and, combined with the categorical information, a simple model is produced to predict what category each image is from. 
 
-- The above command is used to check whether the topic has been created successfully, once confirmed the API script is edited to send data to the created kafka topic. The docker container has an attached volume which allows editing of files to persist on the container. The result of this is below:
+## Milestone 3
 
-```python
-"""Insert your code here"""
-```
 
-> Insert screenshot of what you have built working.
-
-## Milestone n
-
-- Continue this process for every milestone, making sure to display clear understanding of each task and the concepts behind them as well as understanding of the technologies used.
-
-- Also don't forget to include code snippets and screenshots of the system you are building, it gives proof as well as it being an easy way to evidence your experience!
 
 ## Conclusions
 

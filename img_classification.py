@@ -24,26 +24,31 @@ writer = SummaryWriter()
 # Just normalization for validation
 data_transforms = {
     'train': transforms.Compose([
-        transforms.RandomResizedCrop(224),
+        #transforms.RandomResizedCrop(224),
         transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     ]),
     'val': transforms.Compose([
-        transforms.Resize(224),
+        #transforms.Resize(224),
+        transforms.ToTensor(),
+        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+    ]),
+    'test': transforms.Compose([
+        #transforms.Resize(224),
         transforms.ToTensor(),
         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     ]),
 }
 
-data_dir = 'img_classes'
+data_dir = 'img_classes_split'
 image_datasets = {x: datasets.ImageFolder(os.path.join(data_dir, x),
                                           data_transforms[x])
-                  for x in ['train', 'val']}
+                  for x in ['train', 'val', 'test']}
 dataloaders = {x: torch.utils.data.DataLoader(image_datasets[x], batch_size=4,
                                              shuffle=True, num_workers=4)
-              for x in ['train', 'val']}
-dataset_sizes = {x: len(image_datasets[x]) for x in ['train', 'val']}
+              for x in ['train', 'val', 'test']}
+dataset_sizes = {x: len(image_datasets[x]) for x in ['train', 'val', 'test']}
 class_names = image_datasets['train'].classes
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -85,13 +90,17 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=25):
             if phase == 'train':
                 print("Training...")
                 model.train()  # Set model to training mode
-            else:
+            elif phase == 'val':
                 print("Validating...")
                 model.eval()   # Set model to evaluate mode
+            #else:
+            #   print("Testing...")
+            #    model.test()
 
             running_loss = 0.0
             running_corrects = 0
             counter = 0
+            hund_loss = 0
             # Iterate over data.
             for inputs, labels in dataloaders[phase]:
                 inputs = inputs.to(device)
@@ -108,9 +117,12 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=25):
                     outputs = model(inputs)
                     _, preds = torch.max(outputs, 1)
                     loss = criterion(outputs, labels)
-                    print(f'{phase} Rnd {epoch} of {num_epochs} loss: {loss.item():.4f} Running corrects: {running_corrects} Batch No: {counter}')
+                    hund_loss += loss.item()
+                    if counter % 100 == 0:
+                        print(f'{phase} Rnd {epoch} of {num_epochs} loss: {(hund_loss / 100)} Running corrects: {running_corrects} Batch No: {counter}')
                     # TRAINING LOSS STAT UNCOMMENT BELOW
-                    writer.add_scalar('Training Loss', loss, counter)
+                        writer.add_scalar('Training Loss', (hund_loss / 100), time.time())
+                        hund_loss = 0
 
                     # backward + optimize only if in training phase
                     if phase == 'train':
@@ -126,6 +138,7 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=25):
 
             epoch_loss = running_loss / dataset_sizes[phase]
             epoch_acc = running_corrects / (counter * 4)
+            writer.add_scalar('Epoch Accuracy', epoch_acc, time.time())
             # EPOCH LOSS STAT UNCOMMENT BELOW
             # writer.add_scalar('Epoch Loss', epoch_loss, epoch)
 
@@ -177,33 +190,58 @@ def visualize_model(model, num_images=6):
                     return
         model.train(mode=was_training)
 
+def test_species(model, len_labels): 
+    # Load the model that we saved at the end of the training loop   
+     
+    labels_length = len_labels
+    labels_correct = list(0. for i in range(labels_length)) # list to calculate correct labels
+    labels_total = list(0. for i in range(labels_length))   # list to keep the total # of labels per type
+  
+    with torch.no_grad(): 
+        for inputs, labels in dataloaders['test']:
+            inputs = inputs.to(device)
+            labels = labels.to(device)
+            outputs = model(inputs)
+            _, preds = torch.max(outputs, 1) 
+             
+            label_correct_running = (preds == outputs).squeeze() 
+            label = outputs[0] 
+            if label_correct_running.item():  
+                labels_correct[label] += 1 
+            labels_total[label] += 1  
+  
+    label_list = list(labels.keys()) 
+    for i in range(labels_length): 
+        print("THIS IS NEW! IF YOU SEE THIS, YOU ARE GOOD")
+        print('Accuracy to predict %5s : %2d %%' % (label_list[i], 100 * labels_correct[i] / labels_total[i])) 
+
+
+# %%
 #input("Entering training loop - Press Enter to continue...")
 
 choice = input("Train the pre-trained model or Fixed feature extractor? (t/f): ")
 if choice == 't':
 
-# %%
+
 # finetuning the convnet
     model_ft = models.resnet50(pretrained=True)
     num_ftrs = model_ft.fc.in_features
-    # Here the size of each output sample is set to 2.
-    # Alternatively, it can be generalized to nn.Linear(num_ftrs, len(class_names)).
     model_ft.fc = nn.Linear(num_ftrs, len(class_names))
-
     model_ft = model_ft.to(device)
 
     criterion = nn.CrossEntropyLoss()
-
     # Observe that all parameters are being optimized
     optimizer_ft = optim.SGD(model_ft.parameters(), lr=0.001, momentum=0.9)
-
     # Decay LR by a factor of 0.1 every 7 epochs
     exp_lr_scheduler = lr_scheduler.StepLR(optimizer_ft, step_size=7, gamma=0.1)
 
     model_ft = train_model(model_ft, criterion, optimizer_ft, exp_lr_scheduler,
-                        num_epochs=25)
+                        num_epochs=20)
 
     visualize_model(model_ft)
+    input("visualising model - Press Enter to continue...")
+    test_species(model_ft, len(class_names))
+    writer.flush()
     plt.ioff()
     plt.show()
 
@@ -230,6 +268,7 @@ elif choice == 'f':
                         num_epochs=25)
 
     visualize_model(model_conv)
+    input("visualising model - Press Enter to continue...")
     plt.ioff()
     plt.show()
 
