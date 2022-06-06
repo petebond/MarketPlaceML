@@ -1,5 +1,6 @@
 # %%
 from __future__ import print_function, division
+from pyexpat import model
 
 import torch
 import torch.nn as nn
@@ -45,7 +46,7 @@ data_dir = 'img_classes_split'
 image_datasets = {x: datasets.ImageFolder(os.path.join(data_dir, x),
                                           data_transforms[x])
                   for x in ['train', 'val', 'test']}
-dataloaders = {x: torch.utils.data.DataLoader(image_datasets[x], batch_size=4,
+dataloaders = {x: torch.utils.data.DataLoader(image_datasets[x], batch_size=16,
                                              shuffle=True, num_workers=4)
               for x in ['train', 'val', 'test']}
 dataset_sizes = {x: len(image_datasets[x]) for x in ['train', 'val', 'test']}
@@ -75,14 +76,14 @@ out = torchvision.utils.make_grid(inputs)
 imshow(out, title=[class_names[x] for x in classes])
 input("Displaying a sample batch - Press Enter to continue...")
 
-def train_model(model, criterion, optimizer, scheduler, num_epochs=25):
+def train_model(model, criterion, optimizer, scheduler, num_epochs=25, batch_size=4):
     since = time.time()
 
     best_model_wts = copy.deepcopy(model.state_dict())
     best_acc = 0.0
 
     for epoch in range(num_epochs):
-        print(f'Epoch {epoch}/{num_epochs - 1}')
+        print(f'Epoch {epoch + 1}/{num_epochs}')
         print('-' * 10)
 
         # Each epoch has a training and validation phase
@@ -112,22 +113,23 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=25):
                 # forward
                 # track history if only in train
                 
-                with torch.set_grad_enabled(phase == 'train'):
-                    counter += 1
-                    outputs = model(inputs)
-                    _, preds = torch.max(outputs, 1)
-                    loss = criterion(outputs, labels)
-                    hund_loss += loss.item()
-                    if counter % 100 == 0:
-                        print(f'{phase} Rnd {epoch} of {num_epochs} loss: {(hund_loss / 100)} Running corrects: {running_corrects} Batch No: {counter}')
-                    # TRAINING LOSS STAT UNCOMMENT BELOW
-                        writer.add_scalar('Training Loss', (hund_loss / 100), time.time())
-                        hund_loss = 0
-
-                    # backward + optimize only if in training phase
+                #with torch.set_grad_enabled(phase == 'train'):
+                counter += 1
+                outputs = model(inputs)
+                _, preds = torch.max(outputs, 1)
+                loss = criterion(outputs, labels)
+                hund_loss += loss.item()
+                if counter % 100 == 0:
+                    print(f'{phase} loss: {(hund_loss / 100):.4f} Running corrects: {running_corrects} Batch No: {counter}')
+                # TRAINING LOSS STAT UNCOMMENT BELOW
                     if phase == 'train':
-                        loss.backward()
-                        optimizer.step()
+                        writer.add_scalar('Training Loss', (hund_loss / 100), time.time())                      
+                    hund_loss = 0
+
+                # backward + optimize only if in training phase
+                if phase == 'train':
+                    loss.backward()
+                    optimizer.step()
 
                 # statistics
                 running_loss += loss.item() * inputs.size(0)
@@ -137,12 +139,14 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=25):
                 scheduler.step()
 
             epoch_loss = running_loss / dataset_sizes[phase]
-            epoch_acc = running_corrects / (counter * 4)
-            writer.add_scalar('Epoch Accuracy', epoch_acc, time.time())
+            epoch_acc = running_corrects / (counter * batch_size)
+
             # EPOCH LOSS STAT UNCOMMENT BELOW
             # writer.add_scalar('Epoch Loss', epoch_loss, epoch)
 
             print(f'{phase} Loss: {epoch_loss:.4f} Acc: {(epoch_acc * 100):.1f}%')
+            writer.add_scalar('Validation Accuracy', epoch_acc, epoch)
+            writer.add_scalar('Validation Loss', epoch_loss, epoch)
             # input("EPOCH COMPLETE: Press Enter to continue...")
 
             # deep copy the model
@@ -215,20 +219,41 @@ def test_species(model, len_labels):
         print("THIS IS NEW! IF YOU SEE THIS, YOU ARE GOOD")
         print('Accuracy to predict %5s : %2d %%' % (label_list[i], 100 * labels_correct[i] / labels_total[i])) 
 
+class CNN(nn.Module):
+    def __init__(self):
+        super(CNN, self).__init__()
+        self.features = models.resnet50(pretrained=True)
+        for i, param in enumerate(self.features.parameters()):
+            if i < 47:
+                param.requires_grad = False
+            else:
+                param.requires_grad = True
+        self.features.fc = nn.Sequential(
+            nn.Linear(2048, 1024),
+            torch.nn.ReLU(),
+            torch.nn.Dropout(),
+            torch.nn.Linear(1024, 512),
+            torch.nn.ReLU(),
+            torch.nn.Linear(512, 128),
+            torch.nn.ReLU(),
+            torch.nn.Linear(128, len(class_names))
+            )
 
+    def forward(self, x):
+        x = self.features(x)
+        x = x.reshape(x.shape[0], -1)
+        return x
+        
 # %%
 #input("Entering training loop - Press Enter to continue...")
 
 choice = input("Train the pre-trained model or Fixed feature extractor? (t/f): ")
 if choice == 't':
 
-
 # finetuning the convnet
-    model_ft = models.resnet50(pretrained=True)
-    num_ftrs = model_ft.fc.in_features
-    model_ft.fc = nn.Linear(num_ftrs, len(class_names))
-    model_ft = model_ft.to(device)
-
+    batch_size = 16
+    model = CNN().to(device)
+    model_ft = model.features 
     criterion = nn.CrossEntropyLoss()
     # Observe that all parameters are being optimized
     optimizer_ft = optim.SGD(model_ft.parameters(), lr=0.001, momentum=0.9)
@@ -236,11 +261,11 @@ if choice == 't':
     exp_lr_scheduler = lr_scheduler.StepLR(optimizer_ft, step_size=7, gamma=0.1)
 
     model_ft = train_model(model_ft, criterion, optimizer_ft, exp_lr_scheduler,
-                        num_epochs=20)
+                        num_epochs=20, batch_size=batch_size)
 
     visualize_model(model_ft)
     input("visualising model - Press Enter to continue...")
-    test_species(model_ft, len(class_names))
+    test_species(model_ft, batch_size)
     writer.flush()
     plt.ioff()
     plt.show()
