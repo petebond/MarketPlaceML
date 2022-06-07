@@ -261,7 +261,7 @@ if choice.lower() == 't':
     exp_lr_scheduler = lr_scheduler.StepLR(optimizer_ft, step_size=7, gamma=0.1)
 
     trained_model = train_model(model, criterion, optimizer_ft, exp_lr_scheduler,
-                        num_epochs=3, batch_size=batch_size)
+                        num_epochs=30, batch_size=batch_size)
 
     
     writer.flush()
@@ -274,6 +274,11 @@ elif choice.lower() == 'l':
     batch_size = 8
     model = CNN().to(device)
     model.load_state_dict(torch.load('models/model_state_dict.pt'))
+    writer.add_figure(
+                "Confusion matrix",
+                createConfusionMatrix(dataloaders['val'], model, class_names),
+                0
+                )
     writer.flush()
 
 
