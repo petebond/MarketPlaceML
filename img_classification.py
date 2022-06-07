@@ -1,7 +1,9 @@
 # %%
 from __future__ import print_function, division
 from pyexpat import model
-
+from sklearn.metrics import confusion_matrix
+import seaborn as sn
+import pandas as pd
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -46,7 +48,7 @@ data_dir = 'img_classes_split'
 image_datasets = {x: datasets.ImageFolder(os.path.join(data_dir, x),
                                           data_transforms[x])
                   for x in ['train', 'val', 'test']}
-dataloaders = {x: torch.utils.data.DataLoader(image_datasets[x], batch_size=16,
+dataloaders = {x: torch.utils.data.DataLoader(image_datasets[x], batch_size=8,
                                              shuffle=True, num_workers=4)
               for x in ['train', 'val', 'test']}
 dataset_sizes = {x: len(image_datasets[x]) for x in ['train', 'val', 'test']}
@@ -73,10 +75,50 @@ inputs, classes = next(iter(dataloaders['train']))
 # Make a grid from batch
 out = torchvision.utils.make_grid(inputs)
 
-imshow(out, title=[class_names[x] for x in classes])
-input("Displaying a sample batch - Press Enter to continue...")
+def createConfusionMatrix(loader, model, class_names):
+    y_pred = [] # save predction
+    y_true = [] # save ground truth
+
+    # iterate over data
+    for inputs, labels in loader:
+        inputs = inputs.to(device)
+        labels = labels.to(device)
+        output = model(inputs)  # Feed Network
+
+        output = (torch.max(torch.exp(output), 1)[1]).data.cpu().numpy()
+        y_pred.extend(output)  # save prediction
+
+        labels = labels.data.cpu().numpy()
+        y_true.extend(labels)  # save ground truth
+
+    # constant for classes
+    classes = class_names
+
+    # Build confusion matrix
+    cf_matrix = confusion_matrix(y_true, y_pred)
+    df_cm = pd.DataFrame(cf_matrix/np.sum(cf_matrix) * 13, index=[i for i in classes],
+                         columns=[i for i in classes])
+    plt.figure(figsize=(12, 7))    
+    return sn.heatmap(df_cm, annot=True).get_figure()
+
+
+#imshow(out, title=[class_names[x] for x in classes])
+#input("Displaying a sample batch - Press Enter to continue...")
 
 def train_model(model, criterion, optimizer, scheduler, num_epochs=25, batch_size=4):
+    """_summary_
+
+    Args:
+        model (_type_): _description_
+        criterion (_type_): _description_
+        optimizer (_type_): _description_
+        scheduler (_type_): _description_
+        num_epochs (int, optional): _description_. Defaults to 25.
+        batch_size (int, optional): _description_. Defaults to 4.
+
+    Returns:
+        _type_: _description_
+    """    
     since = time.time()
 
     best_model_wts = copy.deepcopy(model.state_dict())
@@ -147,7 +189,11 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=25, batch_siz
             print(f'{phase} Loss: {epoch_loss:.4f} Acc: {(epoch_acc * 100):.1f}%')
             writer.add_scalar('Validation Accuracy', epoch_acc, epoch)
             writer.add_scalar('Validation Loss', epoch_loss, epoch)
-            # input("EPOCH COMPLETE: Press Enter to continue...")
+            writer.add_figure(
+                "Confusion matrix",
+                createConfusionMatrix(dataloaders[phase], model, class_names),
+                epoch
+                )
 
             # deep copy the model
             if phase == 'val' and epoch_acc > best_acc:
@@ -162,62 +208,12 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=25, batch_siz
     print(f'Training complete in {time_elapsed // 60:.0f}m {time_elapsed % 60:.0f}s')
     print(f'Best val Acc: {(best_acc * 100):.1f}%')
     
+    
     # load best model weights
     print("Saving model...")
     model.load_state_dict(best_model_wts)
     torch.save(model.state_dict(), 'models/model_state_dict.pt')
     return model
-
-def visualize_model(model, num_images=6):
-    was_training = model.training
-    model.eval()
-    images_so_far = 0
-    fig = plt.figure()
-
-    with torch.no_grad():
-        for i, (inputs, labels) in enumerate(dataloaders['val']):
-            inputs = inputs.to(device)
-            labels = labels.to(device)
-
-            outputs = model(inputs)
-            _, preds = torch.max(outputs, 1)
-
-            for j in range(inputs.size()[0]):
-                images_so_far += 1
-                ax = plt.subplot(num_images//2, 2, images_so_far)
-                ax.axis('off')
-                ax.set_title(f'predicted: {class_names[preds[j]]}')
-                imshow(inputs.cpu().data[j])
-
-                if images_so_far == num_images:
-                    model.train(mode=was_training)
-                    return
-        model.train(mode=was_training)
-
-def test_species(model, len_labels): 
-    # Load the model that we saved at the end of the training loop   
-     
-    labels_length = len_labels
-    labels_correct = list(0. for i in range(labels_length)) # list to calculate correct labels
-    labels_total = list(0. for i in range(labels_length))   # list to keep the total # of labels per type
-  
-    with torch.no_grad(): 
-        for inputs, labels in dataloaders['test']:
-            inputs = inputs.to(device)
-            labels = labels.to(device)
-            outputs = model(inputs)
-            _, preds = torch.max(outputs, 1) 
-             
-            label_correct_running = (preds == outputs).squeeze() 
-            label = outputs[0] 
-            if label_correct_running.item():  
-                labels_correct[label] += 1 
-            labels_total[label] += 1  
-  
-    label_list = list(labels.keys()) 
-    for i in range(labels_length): 
-        print("THIS IS NEW! IF YOU SEE THIS, YOU ARE GOOD")
-        print('Accuracy to predict %5s : %2d %%' % (label_list[i], 100 * labels_correct[i] / labels_total[i])) 
 
 class CNN(nn.Module):
     def __init__(self):
@@ -247,54 +243,38 @@ class CNN(nn.Module):
 # %%
 #input("Entering training loop - Press Enter to continue...")
 
-choice = input("Train the pre-trained model or Fixed feature extractor? (t/f): ")
-if choice == 't':
+print("""
+Choose wisely:
+[l]oad model and validate
+[t]rain model and validate
+""")
+choice = input("(l/t): ")
+if choice.lower() == 't':
 
 # finetuning the convnet
-    batch_size = 16
+    batch_size = 8
     model = CNN().to(device)
-    model_ft = model.features 
     criterion = nn.CrossEntropyLoss()
     # Observe that all parameters are being optimized
-    optimizer_ft = optim.SGD(model_ft.parameters(), lr=0.001, momentum=0.9)
+    optimizer_ft = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
     # Decay LR by a factor of 0.1 every 7 epochs
     exp_lr_scheduler = lr_scheduler.StepLR(optimizer_ft, step_size=7, gamma=0.1)
 
-    model_ft = train_model(model_ft, criterion, optimizer_ft, exp_lr_scheduler,
-                        num_epochs=20, batch_size=batch_size)
+    trained_model = train_model(model, criterion, optimizer_ft, exp_lr_scheduler,
+                        num_epochs=3, batch_size=batch_size)
 
-    visualize_model(model_ft)
-    input("visualising model - Press Enter to continue...")
-    test_species(model_ft, batch_size)
+    
     writer.flush()
-    plt.ioff()
-    plt.show()
+
 
 
 # %%
 # convnet as fixed feature extractor
-elif choice == 'f':
-    model_conv = torchvision.models.resnet50(pretrained=True)
-    for param in model_conv.parameters():
-        param.requires_grad = False
+elif choice.lower() == 'l':
+    batch_size = 8
+    model = CNN().to(device)
+    model.load_state_dict(torch.load('models/model_state_dict.pt'))
+    writer.flush()
 
-    num_ftrs = model_conv.fc.in_features
-    model_conv.fc = nn.Linear(num_ftrs, len(class_names))
-
-    model_conv = model_conv.to(device)
-
-    criterion = nn.CrossEntropyLoss()
-
-    optimizer_conv = optim.SGD(model_conv.fc.parameters(), lr=0.001, momentum=0.9)
-
-    exp_lr_scheduler = lr_scheduler.StepLR(optimizer_conv, step_size=7, gamma=0.1)
-
-    model_conv = train_model(model_conv, criterion, optimizer_conv, exp_lr_scheduler,
-                        num_epochs=25)
-
-    visualize_model(model_conv)
-    input("visualising model - Press Enter to continue...")
-    plt.ioff()
-    plt.show()
 
 # %%
