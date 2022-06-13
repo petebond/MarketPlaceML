@@ -49,7 +49,7 @@ image_datasets = {x: datasets.ImageFolder(os.path.join(data_dir, x),
                                           data_transforms[x])
                   for x in ['train', 'val', 'test']}
 dataloaders = {x: torch.utils.data.DataLoader(image_datasets[x], batch_size=8,
-                                             shuffle=True, num_workers=4)
+                                             shuffle=True, num_workers=12)
               for x in ['train', 'val', 'test']}
 dataset_sizes = {x: len(image_datasets[x]) for x in ['train', 'val', 'test']}
 class_names = image_datasets['train'].classes
@@ -136,9 +136,7 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=25, batch_siz
             elif phase == 'val':
                 print("Validating...")
                 model.eval()   # Set model to evaluate mode
-            #else:
-            #   print("Testing...")
-            #    model.test()
+
 
             running_loss = 0.0
             running_corrects = 0
@@ -154,8 +152,6 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=25, batch_siz
 
                 # forward
                 # track history if only in train
-                
-                #with torch.set_grad_enabled(phase == 'train'):
                 counter += 1
                 outputs = model(inputs)
                 _, preds = torch.max(outputs, 1)
@@ -182,9 +178,6 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs=25, batch_siz
 
             epoch_loss = running_loss / dataset_sizes[phase]
             epoch_acc = running_corrects / (counter * batch_size)
-
-            # EPOCH LOSS STAT UNCOMMENT BELOW
-            # writer.add_scalar('Epoch Loss', epoch_loss, epoch)
 
             print(f'{phase} Loss: {epoch_loss:.4f} Acc: {(epoch_acc * 100):.1f}%')
             writer.add_scalar('Validation Accuracy', epoch_acc, epoch)
@@ -240,8 +233,6 @@ class CNN(nn.Module):
         x = x.reshape(x.shape[0], -1)
         return x
         
-# %%
-#input("Entering training loop - Press Enter to continue...")
 
 print("""
 Choose wisely:
@@ -258,17 +249,12 @@ if choice.lower() == 't':
     # Observe that all parameters are being optimized
     optimizer_ft = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
     # Decay LR by a factor of 0.1 every 7 epochs
-    exp_lr_scheduler = lr_scheduler.StepLR(optimizer_ft, step_size=7, gamma=0.1)
+    exp_lr_scheduler = lr_scheduler.CosineAnnealingWarmRestarts(optimizer_ft, T_0=10, eta_min=0.00001)
 
     trained_model = train_model(model, criterion, optimizer_ft, exp_lr_scheduler,
-                        num_epochs=30, batch_size=batch_size)
-
-    
+                        num_epochs=60, batch_size=batch_size)
     writer.flush()
 
-
-
-# %%
 # convnet as fixed feature extractor
 elif choice.lower() == 'l':
     batch_size = 8
@@ -281,5 +267,3 @@ elif choice.lower() == 'l':
                 )
     writer.flush()
 
-
-# %%
